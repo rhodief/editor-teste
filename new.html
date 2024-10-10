@@ -1,83 +1,127 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contenteditable Pattern Matcher</title>
-  <style>
-    .highlight {
-      background-color: yellow;
-      font-weight: bold;
-    }
-    [contenteditable] {
-      padding: 10px;
-      border: 1px solid #ccc;
-      min-height: 100px;
-      max-width: 400px;
-    }
-  </style>
-</head>
-<body>
-  <div id="editable" contenteditable="true"></div>
-  <script>
-    const editableDiv = document.getElementById('editable');
-
-    function setCaret(node, position) {
-        const range = document.createRange();
-        const selection = window.getSelection();
-
-        // Set the start and end of the range to the desired node and position
-        range.setStart(node, position);
-        range.collapse(true); // Collapse the range to a single point (i.e., the caret position)
-
-        // Clear existing selections and apply the new range
-        selection.removeAllRanges();
-        selection.addRange(range);
-    }
-
-    editableDiv.addEventListener('input', function () {
-      const regex = /(\$\$\w+\$\$)/g;
-      let walker = document.createTreeWalker(editableDiv, NodeFilter.SHOW_TEXT, null, false);
-      let currentNode = walker.nextNode();
-      
-      while (currentNode) {
-        let match;
-        while ((match = regex.exec(currentNode.textContent)) !== null) {
-          const matchedText = match[0];
-          if (currentNode.textContent === matchedText) continue
-          const matchStart = match.index;
-          //debugger
-          // Create a span element to wrap the matched text
-          const span = document.createElement('span');
-          span.className = 'highlight';
-          span.textContent = matchedText;
-            //debugger
-          // Split the text node into parts: before, match, and after
-          const beforeText = currentNode.textContent.substring(0, matchStart);
-          let afterText = currentNode.textContent.substring(matchStart + matchedText.length);
-          if (afterText === '') {
-            afterText = '\u00A0';
-          }
-            //debugger
-          // Replace the current text node with new nodes
-          const beforeNode = document.createTextNode(beforeText);
-          const afterNode = document.createTextNode(afterText);
-            //debugger
-          currentNode.parentNode.insertBefore(beforeNode, currentNode);
-          currentNode.parentNode.insertBefore(span, currentNode);
-          currentNode.parentNode.insertBefore(afterNode, currentNode);
-          //debugger
-          currentNode.parentNode.removeChild(currentNode);
-            //debugger
-          // Move to the next sibling node to continue replacement
-          currentNode = afterNode;
-          regex.lastIndex = 0; // Reset regex for next iteration
-          //setCaret(afterNode, 0)
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contenteditable Pattern Matcher</title>
+    <style>
+        .highlight {
+            background-color: grey;
+            color: white;
+            font-weight: bold;
         }
-        currentNode = walker.nextNode();
-      }
+
+        [contenteditable] {
+            padding: 10px;
+            border: 1px solid #ccc;
+            min-height: 100px;
+            max-width: 400px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="editable" contenteditable="true"></div>
+    <div id="showFound"></div>
+    <script>
+        const editableDiv = document.getElementById('editable');
+
+        const markers = [
+            {
+                marker: '$$',
+                color: 'red'
+            },
+            {
+                marker: '##',
+                color: 'blue'
+            }
+        ]
+
+        const escapeRegExp = (string) => {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape any special characters
+        };
+
+        function setCaret(node, position) {
+            const range = document.createRange();
+            const selection = window.getSelection();
+
+            // Set the start and end of the range to the desired node and position
+            range.setStart(node, position);
+            range.collapse(true); // Collapse the range to a single point (i.e., the caret position)
+
+            // Clear existing selections and apply the new range
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        editableDiv.addEventListener('paste', function (event) {
+            // Prevent the default paste behavior
+            event.preventDefault();
       
-    });
-  </script>
+            // Get the text content from the clipboard
+            const text = (event.clipboardData || window.clipboardData).getData('text');
+      
+            // Insert plain text without any formatting
+            document.execCommand('insertText', false, text);
+          });
+
+        const found = []
+        editableDiv.addEventListener('input', function () {
+            //const regex = /(\$\$\w+\$\$)/g;
+            const markerPatterns = markers.map(markerObj => {
+                const ms = escapeRegExp(markerObj.marker)
+                return `${ms}\\w+${ms}`
+            }).join('|');
+            const regex = new RegExp(`(${markerPatterns})`, 'g'); // Dynamically build the regex
+            
+            let walker = document.createTreeWalker(editableDiv, NodeFilter.SHOW_TEXT, null, false);
+            let currentNode = walker.nextNode();
+            while (currentNode) {
+                let match;
+                while ((match = regex.exec(currentNode.textContent)) !== null) {
+                    const matchedText = match[0];
+                    if (currentNode.textContent === matchedText) continue
+                    const matchStart = match.index;
+                    //debugger
+                    // Create a span element to wrap the matched text
+                    const span = document.createElement('span');
+                    span.className = 'highlight';
+                    span.textContent = matchedText;
+                    const matchedMarker = markers.find(markerObj => matchedText.startsWith(markerObj.marker));
+                    if (matchedMarker) {
+                        span.style.backgroundColor = matchedMarker.color
+                        found.push(matchedText)
+                    }
+                    //debugger
+                    // Split the text node into parts: before, match, and after
+                    const beforeText = currentNode.textContent.substring(0, matchStart);
+                    let afterText = currentNode.textContent.substring(matchStart + matchedText.length);
+                    if (afterText === '') {
+                        afterText = '\u00A0';
+                    }
+                    //debugger
+                    // Replace the current text node with new nodes
+                    const beforeNode = document.createTextNode(beforeText);
+                    const afterNode = document.createTextNode(afterText);
+                    //debugger
+                    currentNode.parentNode.insertBefore(beforeNode, currentNode);
+                    currentNode.parentNode.insertBefore(span, currentNode);
+                    currentNode.parentNode.insertBefore(afterNode, currentNode);
+                    //debugger
+                    currentNode.parentNode.removeChild(currentNode);
+                    //debugger
+                    // Move to the next sibling node to continue replacement
+                    currentNode = afterNode;
+                    regex.lastIndex = 0; // Reset regex for next iteration
+                    //setCaret(afterNode, 0)
+                }
+                currentNode = walker.nextNode();
+            }
+            const divFound = document.getElementById('showFound');
+            divFound.innerText = found
+        });
+    </script>
 </body>
+
 </html>
