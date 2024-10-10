@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <label>Teste</label>
+    <div contenteditable="true" id="editor"></div>
+
+    <script>
+
+        const markers = [
+            {
+                marker: '::',
+                color: 'red'
+            },
+            {
+                marker: '$$',
+                color: 'blue'
+            }
+        ]
+
+        // Function to escape special characters for regex
+        const escapeRegExp = (string) => {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape any special characters
+        };
+
+        const getTextParts = (content) => {
+            const markerPatterns = markers.map(markerObj => escapeRegExp(markerObj.marker)).join('\\w+|');
+            const regex = new RegExp(`(${markerPatterns}\\w+)\\s`, 'g'); // Dynamically build the regex
+            return content.split(regex);
+
+        }
+
+        function getCurrentNodeAndPostition() {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const currentNode = range.startContainer;
+                const caretPosition = range.startOffset;
+
+                return {
+                    currentNode,
+                    caretPosition
+                }                
+            }
+        }
+        
+        function getTextContent() {
+            const editor = document.getElementById('editor')
+            return editor.innerText
+        }
+
+        function getHTMLFromParts(parts) {
+            console.log(parts)
+            t = '<div>' + parts.map((part, ipart) => {
+                    const matchedMarker = markers.find(markerObj => part.startsWith(markerObj.marker));        
+                    if (matchedMarker) {
+                        return `<span style="color: ${matchedMarker.color};">${part}</span>&nbsp;`;
+                    }
+                    const subParts = part.split('\n')
+                    let breakCount = 0
+                    return subParts.map( (sb, i) => {
+                        const sizeSubPar = sb.length
+                        if (subParts.length > 1) {
+                            const isBreak = sizeSubPar === 0
+                            if (isBreak) {
+                                breakCount++
+                                const hasPrev = ipart > 0
+                                if (i === 0 && hasPrev) {
+                                    const prevPart = parts[ipart - 1]
+                                    const matchedMarker = markers.find(markerObj => prevPart.startsWith(markerObj.marker));
+                                    console.log('eeee', matchedMarker, ipart, prevPart)
+                                    if (matchedMarker) {                                        
+                                        return '</div><div>'                                        
+                                    }               
+                                }
+                                if (breakCount < 2) {
+                                    return ''
+                                }
+                                console.log('meu berak', breakCount) 
+                                //breakCount = 0
+                                return '<br>'
+                            }
+                            breakCount = 0
+                            if (i !== subParts.length - 1) {
+                                console.log('entrei')
+                                return `${sb}</div><div>`
+                            }                            
+                        }
+                        return sb                        
+                    }).join('')
+                }).join('') + '</div>'
+            console.log(t)
+            return t
+        }
+
+        function setCaret(node, position) {
+            const range = document.createRange();
+            const selection = window.getSelection();
+
+            // Set the start and end of the range to the desired node and position
+            range.setStart(node, position);
+            range.collapse(true); // Collapse the range to a single point (i.e., the caret position)
+
+            // Clear existing selections and apply the new range
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        function getCaretPosition() {
+            const editableDiv = document.getElementById('editor')
+            let caretOffset = 0;
+            const selection = window.getSelection();
+
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const preCaretRange = range.cloneRange();
+                preCaretRange.selectNodeContents(editableDiv);
+                preCaretRange.setEnd(range.endContainer, range.endOffset);
+                caretOffset = preCaretRange.toString().length;
+            }
+            return caretOffset;
+        }
+
+        function setCaretPosition(position) {
+            const editableDiv = document.getElementById('editor')
+            const range = document.createRange();
+            const selection = window.getSelection();
+        
+            // Create a TreeWalker to traverse the editableDiv's nodes, considering text and <br> nodes
+            const treeWalker = document.createTreeWalker(
+                editableDiv,
+                NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, // Show text nodes and <br> elements
+                {
+                    acceptNode: function(node) {
+                        if (node.nodeType === Node.TEXT_NODE || (node.nodeName === "BR")) {
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                        return NodeFilter.FILTER_SKIP;
+                    }
+                },
+                false
+            );
+        
+            let currentNode = treeWalker.nextNode();
+            let charsCount = 0;
+        
+            // Traverse the nodes to find the correct position
+            while (currentNode) {
+                if (currentNode.nodeType === Node.TEXT_NODE) {
+                    console.log('NODE', currentNode)
+                    const textLength = currentNode.textContent.length;
+        
+                    if (charsCount + textLength >= position) {
+                        // Set the caret at the correct position within the current text node
+                        range.setStart(currentNode, position - charsCount);
+                        break;
+                    }
+        
+                    charsCount += textLength;
+                } else if (currentNode.nodeName === "BR") {
+                    // Treat <br> as a single character (like a space or new line)
+                    console.log('here BR', currentNode)
+                    charsCount += 1;
+        
+                    if (charsCount >= position) {
+                        // Set the caret position immediately after the <br>
+                        range.setStartAfter(currentNode);
+                        break;
+                    }
+                }
+        
+                currentNode = treeWalker.nextNode();
+            }
+        
+            // Collapse the range and set it as the new selection
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+        
+        let myTimeout;
+        document.getElementById('editor').addEventListener('keyup', (event) => {
+
+            const { currentNode, caretPosition } = getCurrentNodeAndPostition()
+            clearTimeout(myTimeout)
+            const position = getCaretPosition()
+            console.log('got pos', position)
+            myTimeout = setTimeout(() => {
+                const parts = getTextParts(getTextContent())
+                const newHtml = getHTMLFromParts(parts)
+                document.getElementById('editor').innerHTML = newHtml
+                console.log(event.key)
+                setCaretPosition(event.key === 'Enter' ? position + 1 : position)
+            }, 1000)
+            //
+            //setCaret(currentNode, caretPosition)
+        });
+    </script>
+</body>
+
+</html>
