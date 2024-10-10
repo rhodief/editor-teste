@@ -55,6 +55,11 @@
             selection.addRange(range);
         }
 
+        function updateInfo() {
+            const divFound = document.getElementById('showFound');
+            divFound.innerText = found
+        }
+
         editableDiv.addEventListener('paste', function (event) {
             // Prevent the default paste behavior
             event.preventDefault();
@@ -91,7 +96,7 @@
                     const matchedMarker = markers.find(markerObj => matchedText.startsWith(markerObj.marker));
                     if (matchedMarker) {
                         span.style.backgroundColor = matchedMarker.color
-                        found.push(matchedText)
+                        found.push(matchedText.trim())
                     }
                     //debugger
                     // Split the text node into parts: before, match, and after
@@ -118,8 +123,7 @@
                 }
                 currentNode = walker.nextNode();
             }
-            const divFound = document.getElementById('showFound');
-            divFound.innerText = found
+            updateInfo()
         });
 
         // Keydown event to handle backspace or delete actions within a highlight span
@@ -139,10 +143,15 @@
                     event.preventDefault();
 
                     // Replace the span with its text content
+                    const textContent = span.textContent.trim()
                     const textNode = document.createTextNode('');
                     span.parentNode.insertBefore(textNode, span);
                     span.parentNode.removeChild(span);
-
+                    const foundIndex = found.findIndex(f => f === textContent)
+                    if (foundIndex > -1) {
+                        found.splice(foundIndex, 1)
+                    }
+                    updateInfo()
                     // Set caret position correctly
                     setCaret(textNode, event.key === 'Backspace' ? textNode.length : 0);
                 }
