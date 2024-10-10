@@ -121,6 +121,33 @@
             const divFound = document.getElementById('showFound');
             divFound.innerText = found
         });
+
+        // Keydown event to handle backspace or delete actions within a highlight span
+        editableDiv.addEventListener('keydown', function (event) {
+            const selection = window.getSelection();
+            if (selection.rangeCount === 0) return;
+
+            const range = selection.getRangeAt(0);
+            const currentNode = range.startContainer;
+
+            // Check if the current node is a text node inside a highlight span
+            if (currentNode.parentNode.classList.contains('highlight')) {
+                const span = currentNode.parentNode;
+
+                // If Backspace or Delete key is pressed
+                if (event.key === 'Backspace' || event.key === 'Delete') {
+                    event.preventDefault();
+
+                    // Replace the span with its text content
+                    const textNode = document.createTextNode('');
+                    span.parentNode.insertBefore(textNode, span);
+                    span.parentNode.removeChild(span);
+
+                    // Set caret position correctly
+                    setCaret(textNode, event.key === 'Backspace' ? textNode.length : 0);
+                }
+            }
+        });
     </script>
 </body>
 
